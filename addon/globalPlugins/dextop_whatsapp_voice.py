@@ -12,7 +12,7 @@ import base64
 import random
 import winreg
 
-log = logging.getLogger("nvda.metavoice_desktop")
+log = logging.getLogger("nvda.dextop_whatsapp_voice")
 
 class MinWSClient:
     """Un cliente WebSocket minimalista en Python puro para comunicarse con el protocolo CDP."""
@@ -89,7 +89,7 @@ class MinWSClient:
             self.sock = None
 
 
-class MetaVoicePluginThread(threading.Thread):
+class DextopWhatsAppVoiceThread(threading.Thread):
     """Hilo de segundo plano para monitorear WhatsApp Desktop e inyectar el script."""
     def __init__(self, js_code):
         super().__init__()
@@ -108,10 +108,10 @@ class MetaVoicePluginThread(threading.Thread):
                 try:
                     ws_url = self.find_whatsapp_ws_url()
                     if ws_url:
-                        log.info(f"MetaVoice Desktop: Puerto de depuración de WhatsApp detectado. Conectando a {ws_url}...")
+                        log.info(f"Dextop WhatsApp Voice: Puerto de depuración de WhatsApp detectado. Conectando a {ws_url}...")
                         self.inject_and_hold(ws_url)
                 except Exception as e:
-                    log.error(f"MetaVoice Desktop: Error en el bucle de inyección: {e}")
+                    log.error(f"Dextop WhatsApp Voice: Error en el bucle de inyección: {e}")
             time.sleep(5)
 
     def setup_registry_policy(self):
@@ -129,9 +129,9 @@ class MetaVoicePluginThread(threading.Thread):
                 winreg.SetValueEx(key, "WhatsApp.Root.exe", 0, winreg.REG_SZ, "--remote-debugging-port=9222")
                 winreg.SetValueEx(key, "WhatsApp.exe", 0, winreg.REG_SZ, "--remote-debugging-port=9222")
                 winreg.CloseKey(key)
-                log.info(f"MetaVoice Desktop: Registro configurado en {key_path}")
+                log.info(f"Dextop WhatsApp Voice: Registro configurado en {key_path}")
             except Exception as e:
-                log.error(f"MetaVoice Desktop: Falló al escribir en {key_path}: {e}")
+                log.error(f"Dextop WhatsApp Voice: Falló al escribir en {key_path}: {e}")
 
     def find_whatsapp_ws_url(self):
         try:
@@ -187,7 +187,7 @@ class MetaVoicePluginThread(threading.Thread):
                     "expression": self.js_code
                 }
             }))
-            log.info("MetaVoice Desktop: ¡Script inyectado con éxito en la ventana de WhatsApp Desktop!")
+            log.info("Dextop WhatsApp Voice: ¡Script inyectado con éxito en la ventana de WhatsApp Desktop!")
 
             # 4. Mantener la conexión abierta para verificar que WhatsApp siga activo
             client.sock.settimeout(1.0)
@@ -195,7 +195,7 @@ class MetaVoicePluginThread(threading.Thread):
                 try:
                     data = client.sock.recv(1024)
                     if not data:
-                        log.info("MetaVoice Desktop: La conexión de WebSocket fue cerrada por WhatsApp.")
+                        log.info("Dextop WhatsApp Voice: La conexión de WebSocket fue cerrada por WhatsApp.")
                         break
                 except socket.timeout:
                     # Enviar un comando de latido (ping) para validar el canal de comunicación
@@ -206,11 +206,11 @@ class MetaVoicePluginThread(threading.Thread):
                             "params": {"expression": "1+1"}
                         }))
                     except Exception:
-                        log.info("MetaVoice Desktop: Canal de WebSocket perdido.")
+                        log.info("Dextop WhatsApp Voice: Canal de WebSocket perdido.")
                         break
                 time.sleep(5)
         except Exception as e:
-            log.error(f"MetaVoice Desktop: Error durante la sesión de inyección CDP: {e}")
+            log.error(f"Dextop WhatsApp Voice: Error durante la sesión de inyección CDP: {e}")
         finally:
             if client:
                 client.close()
@@ -220,7 +220,7 @@ class MetaVoicePluginThread(threading.Thread):
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def __init__(self):
         super().__init__()
-        log.info("MetaVoice Desktop: Inicializando plugin global...")
+        log.info("Dextop WhatsApp Voice: Inicializando plugin global...")
         
         try:
             current_dir = os.path.dirname(__file__)
@@ -229,14 +229,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 js_code = f.read()
             
             # Iniciar el hilo de monitoreo
-            self.thread = MetaVoicePluginThread(js_code)
+            self.thread = DextopWhatsAppVoiceThread(js_code)
             self.thread.start()
-            log.info("MetaVoice Desktop: Hilo de monitoreo e inyección inicializado con éxito.")
+            log.info("Dextop WhatsApp Voice: Hilo de monitoreo e inyección inicializado con éxito.")
         except Exception as e:
-            log.error(f"MetaVoice Desktop: Error al cargar el archivo JS o al arrancar el hilo: {e}")
+            log.error(f"Dextop WhatsApp Voice: Error al cargar el archivo JS o al arrancar el hilo: {e}")
 
     def terminate(self):
-        log.info("MetaVoice Desktop: Finalizando plugin...")
+        log.info("Dextop WhatsApp Voice: Finalizando plugin...")
         if hasattr(self, 'thread'):
             self.thread.running = False
             self.thread.join(timeout=2.0)

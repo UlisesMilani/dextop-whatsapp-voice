@@ -2,7 +2,7 @@ import os
 import zipfile
 
 def compile_addon():
-    addon_name = "metavoice_desktop-1.0.nvda-addon"
+    addon_name = "dextop_whatsapp_voice-1.0.nvda-addon"
     
     # Lista de archivos a empaquetar en formato (ruta_local, ruta_en_zip)
     files_to_zip = []

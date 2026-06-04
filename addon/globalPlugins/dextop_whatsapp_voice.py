@@ -1,4 +1,5 @@
 import globalPluginHandler
+import globalVars
 import os
 import logging
 import threading
@@ -217,9 +218,36 @@ class DextopWhatsAppVoiceThread(threading.Thread):
             self.connected_url = None
 
 
+def cleanup_registry_policy():
+    """Remueve las claves de registro para depuración remota de WhatsApp."""
+    paths_to_clean = [
+        (winreg.HKEY_CURRENT_USER, r"Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"),
+        (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Edge\WebView2\AdditionalBrowserArguments")
+    ]
+    for hkey, key_path in paths_to_clean:
+        try:
+            key = winreg.OpenKey(hkey, key_path, 0, winreg.KEY_SET_VALUE)
+            for name in ["WhatsApp.Root.exe", "WhatsApp.exe"]:
+                try:
+                    winreg.DeleteValue(key, name)
+                    log.info(f"Dextop WhatsApp Voice: Registro limpiado en {key_path} para {name}")
+                except FileNotFoundError:
+                    pass
+            winreg.CloseKey(key)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log.error(f"Dextop WhatsApp Voice: Error al limpiar registro: {e}")
+
+
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def __init__(self):
         super().__init__()
+        # Validar pantallas seguras
+        if globalVars.appArgs.secure:
+            log.warning("Dextop WhatsApp Voice: Desactivado en pantallas seguras por razones de seguridad.")
+            raise ValueError("El complemento no se puede ejecutar en pantallas seguras.")
+
         log.info("Dextop WhatsApp Voice: Inicializando plugin global...")
         
         try:
@@ -240,4 +268,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         if hasattr(self, 'thread'):
             self.thread.running = False
             self.thread.join(timeout=2.0)
+        
+        # Limpiar inmediatamente los registros de depuración remota de WebView2
+        cleanup_registry_policy()
         super().terminate()

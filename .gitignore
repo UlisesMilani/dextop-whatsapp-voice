@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+*.nvda-addon
+.DS_Store
+.system_generated/

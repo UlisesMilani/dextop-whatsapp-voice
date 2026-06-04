@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MetaVoice Desktop Help</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+            color: #333;
+        }
+        h1 { color: #0056b3; }
+        h2 { color: #333; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+        code { background-color: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-family: Consolas, monospace; }
+        ul { padding-left: 20px; }
+    </style>
+</head>
+<body>
+    <h1>MetaVoice Desktop</h1>
+    <p>This NVDA add-on optimizes the native voice recording quality in the WhatsApp Desktop app (modern version based on Microsoft WebView2).</p>
+    
+    <h2>What does this add-on do?</h2>
+    <ul>
+        <li><strong>Disables aggressive audio filters:</strong> Deactivates Chromium's echo cancellation, noise suppression, and auto gain control (AGC), allowing you to record direct and clean microphone audio.</li>
+        <li><strong>Forces High Quality (Opus 48kHz / 128kbps):</strong> Modifies WhatsApp's internal Opus compression parameters to studio quality, sending clean native voice notes (with their waveforms and playback speed controls).</li>
+        <li><strong>Clean Uninstall:</strong> Includes an automated script that removes any registry modifications if you choose to uninstall the add-on.</li>
+    </ul>
+
+    <h2>Requirements & Usage</h2>
+    <ol>
+        <li>Install the add-on by double-clicking the <code>.nvda-addon</code> file and confirming NVDA restart.</li>
+        <li>Close WhatsApp Desktop completely and reopen it. The add-on will automatically connect in the background.</li>
+        <li>Record voice notes using the native microphone button in WhatsApp Desktop as usual.</li>
+    </ol>
+</body>
+</html>

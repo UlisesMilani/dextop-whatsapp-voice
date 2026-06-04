@@ -1,0 +1,21 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: dextop_whatsapp_voice 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-06-04 10:15-0300\n"
+"PO-Revision-Date: 2026-06-04 10:15-0300\n"
+"Last-Translator: Ulises <ulisesmilani@gmail.com>\n"
+"Language-Team: Spanish\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "This add-on cannot be run on secure screens."
+msgstr "El complemento no se puede ejecutar en pantallas seguras."
+
+msgid "A new version of Dextop WhatsApp Voice is available. Would you like to open the download page?"
+msgstr "Hay una nueva versión de Dextop WhatsApp Voice disponible. ¿Te gustaría abrir la página de descarga?"
+
+msgid "Update Available"
+msgstr "Actualización disponible"

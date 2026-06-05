@@ -272,6 +272,59 @@ def is_new_version(remote_v_str, local_v_str):
     return False
 
 
+def notify_message(msg):
+    """Speaks a message and displays it in braille via NVDA's ui module."""
+    try:
+        import ui
+        import wx
+        wx.CallAfter(lambda: ui.message(msg))
+    except Exception:
+        pass
+
+
+class UpdateDownloaderThread(threading.Thread):
+    """Downloads the .nvda-addon package in the background and runs it."""
+    def __init__(self, download_url):
+        super().__init__()
+        self.daemon = True
+        self.download_url = download_url
+
+    def run(self):
+        notify_message(_("Downloading update..."))
+        try:
+            req = urllib.request.Request(self.download_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=30.0) as response:
+                import tempfile
+                temp_dir = tempfile.gettempdir()
+                temp_path = os.path.join(temp_dir, "dextop_whatsapp_voice_update.nvda-addon")
+                
+                # Delete existing file if present
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except Exception:
+                        pass
+                
+                with open(temp_path, "wb") as f:
+                    while True:
+                        chunk = response.read(1024 * 16)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                
+                notify_message(_("Download complete. Starting installation..."))
+                import os
+                os.startfile(temp_path)
+        except Exception as e:
+            log.error(f"Dextop WhatsApp Voice: Direct download failed: {e}", exc_info=True)
+            notify_message(_("Automatic download failed. Opening download page in browser..."))
+            try:
+                import os
+                os.startfile("https://github.com/UlisesMilani/dextop-whatsapp-voice/releases/latest")
+            except Exception:
+                pass
+
+
 class UpdateCheckerThread(threading.Thread):
     """Asynchronously checks GitHub repository for add-on updates on the dev channel."""
     def __init__(self, current_version):
@@ -290,16 +343,21 @@ class UpdateCheckerThread(threading.Thread):
                 if remote_version and is_new_version(remote_version, self.current_version):
                     import wx
                     import gui
+                    download_url = data.get("downloadUrl")
                     
                     def prompt_update():
                         res = gui.messageBox(
-                            _("A new version of Dextop WhatsApp Voice is available. Would you like to open the download page?"),
+                            _("A new version of Dextop WhatsApp Voice is available. Would you like to download and install it now?"),
                             _("Update Available"),
                             wx.YES_NO | wx.ICON_QUESTION
                         )
                         if res == wx.YES:
-                            import os
-                            os.startfile("https://github.com/UlisesMilani/dextop-whatsapp-voice/releases/latest")
+                            if download_url:
+                                downloader = UpdateDownloaderThread(download_url)
+                                downloader.start()
+                            else:
+                                import os
+                                os.startfile("https://github.com/UlisesMilani/dextop-whatsapp-voice/releases/latest")
                     
                     wx.CallAfter(prompt_update)
         except Exception as e:

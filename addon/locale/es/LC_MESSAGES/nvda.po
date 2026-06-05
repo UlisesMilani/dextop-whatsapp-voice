@@ -14,11 +14,20 @@ msgstr ""
 msgid "This add-on cannot be run on secure screens."
 msgstr "El complemento no se puede ejecutar en pantallas seguras."
 
-msgid "A new version of Dextop WhatsApp Voice is available. Would you like to open the download page?"
-msgstr "Hay una nueva versión de Dextop WhatsApp Voice disponible. ¿Te gustaría abrir la página de descarga?"
+msgid "A new version of Dextop WhatsApp Voice is available. Would you like to download and install it now?"
+msgstr "Hay una nueva versión de Dextop WhatsApp Voice disponible. ¿Te gustaría descargar e instalar la actualización ahora?"
 
 msgid "Update Available"
 msgstr "Actualización disponible"
+
+msgid "Downloading update..."
+msgstr "Descargando actualización..."
+
+msgid "Download complete. Starting installation..."
+msgstr "Descarga completada. Iniciando instalación..."
+
+msgid "Automatic download failed. Opening download page in browser..."
+msgstr "La descarga automática falló. Abriendo la página de descargas en el navegador..."
 
 msgid "Dextop WhatsApp Voice: Access denied to the Windows Registry. Audio quality improvements might not work. Please try running NVDA as Administrator once or check your antivirus settings."
 msgstr "Dextop WhatsApp Voice: Acceso denegado al Registro de Windows. La mejora de calidad de audio podría no funcionar. Intente ejecutar NVDA como Administrador una vez o revise las alertas de su antivirus."

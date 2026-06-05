@@ -51,9 +51,9 @@ def compile_po_to_mo(po_path, mo_path):
     unescaped_messages = {}
     for k, v in messages.items():
         try:
-            # unicode-escape decodifica \n, \t, etc.
-            k_unescaped = k.encode('utf-8').decode('unicode-escape')
-            v_unescaped = v.encode('utf-8').decode('unicode-escape')
+            # unicode-escape decodifica \n, \t, etc., preservando UTF-8
+            k_unescaped = k.encode('utf-8').decode('unicode-escape').encode('latin-1').decode('utf-8')
+            v_unescaped = v.encode('utf-8').decode('unicode-escape').encode('latin-1').decode('utf-8')
             unescaped_messages[k_unescaped] = v_unescaped
         except Exception:
             unescaped_messages[k] = v

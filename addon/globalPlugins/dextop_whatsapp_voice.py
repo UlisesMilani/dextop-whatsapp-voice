@@ -354,7 +354,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         # Start update check
         try:
             addon = addonHandler.getCodeAddon()
-            current_version = addon.manifest.version
+            current_version = addon.manifest['version']
             self.checker = UpdateCheckerThread(current_version)
             self.checker.start()
         except Exception as e:

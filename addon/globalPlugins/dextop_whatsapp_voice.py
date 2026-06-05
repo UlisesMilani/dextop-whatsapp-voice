@@ -313,13 +313,11 @@ class UpdateDownloaderThread(threading.Thread):
                         f.write(chunk)
                 
                 notify_message(_("Download complete. Starting installation..."))
-                import os
                 os.startfile(temp_path)
         except Exception as e:
             log.error(f"Dextop WhatsApp Voice: Direct download failed: {e}", exc_info=True)
             notify_message(_("Automatic download failed. Opening download page in browser..."))
             try:
-                import os
                 os.startfile("https://github.com/UlisesMilani/dextop-whatsapp-voice/releases/latest")
             except Exception:
                 pass
@@ -356,7 +354,6 @@ class UpdateCheckerThread(threading.Thread):
                                 downloader = UpdateDownloaderThread(download_url)
                                 downloader.start()
                             else:
-                                import os
                                 os.startfile("https://github.com/UlisesMilani/dextop-whatsapp-voice/releases/latest")
                     
                     wx.CallAfter(prompt_update)

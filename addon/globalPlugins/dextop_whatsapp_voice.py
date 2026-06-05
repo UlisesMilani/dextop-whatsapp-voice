@@ -293,9 +293,9 @@ class UpdateCheckerThread(threading.Thread):
                     
                     def prompt_update():
                         res = gui.messageBox(
-                            message=_("A new version of Dextop WhatsApp Voice is available. Would you like to open the download page?"),
-                            title=_("Update Available"),
-                            style=wx.YES_NO | wx.ICON_QUESTION
+                            _("A new version of Dextop WhatsApp Voice is available. Would you like to open the download page?"),
+                            _("Update Available"),
+                            wx.YES_NO | wx.ICON_QUESTION
                         )
                         if res == wx.YES:
                             import os

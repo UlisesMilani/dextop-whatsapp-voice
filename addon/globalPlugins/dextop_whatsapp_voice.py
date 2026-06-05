@@ -127,8 +127,17 @@ class DextopWhatsAppVoiceThread(threading.Thread):
                 winreg.SetValueEx(key, "WhatsApp.exe", 0, winreg.REG_SZ, "--remote-debugging-port=59222")
                 winreg.CloseKey(key)
                 log.info(f"Dextop WhatsApp Voice: Registry configured at {key_path}")
+                
+                # Verification read
+                verify_key = winreg.OpenKey(hkey, key_path, 0, winreg.KEY_READ)
+                val_root, _ = winreg.QueryValueEx(verify_key, "WhatsApp.Root.exe")
+                val_exe, _ = winreg.QueryValueEx(verify_key, "WhatsApp.exe")
+                winreg.CloseKey(verify_key)
+                log.info(f"Dextop WhatsApp Voice: Registry verified successfully: Root={val_root}, Exe={val_exe}")
+            except PermissionError as pe:
+                log.error(f"Dextop WhatsApp Voice: Permission Denied writing registry at {key_path}. Policies might be locked by GPO or Antivirus: {pe}")
             except Exception as e:
-                log.error(f"Dextop WhatsApp Voice: Failed to write to {key_path}: {e}")
+                log.error(f"Dextop WhatsApp Voice: Failed to write/verify registry at {key_path}: {e}")
 
     def find_whatsapp_ws_url(self):
         try:
@@ -212,10 +221,14 @@ class DextopWhatsAppVoiceThread(threading.Thread):
 
 
 def is_new_version(remote_v_str, local_v_str):
-    """Compares version strings semantic-style (e.g. 1.1 > 1.0)."""
+    """Compares version strings semantic-style (e.g. 1.0-dev > 0.9-dev)."""
     try:
-        remote_parts = [int(x) for x in remote_v_str.split(".")]
-        local_parts = [int(x) for x in local_v_str.split(".")]
+        # Strip dev/beta tags for clean comparison
+        remote_clean = remote_v_str.split("-")[0]
+        local_clean = local_v_str.split("-")[0]
+        
+        remote_parts = [int(x) for x in remote_clean.split(".")]
+        local_parts = [int(x) for x in local_clean.split(".")]
         max_len = max(len(remote_parts), len(local_parts))
         remote_parts += [0] * (max_len - len(remote_parts))
         local_parts += [0] * (max_len - len(local_parts))
@@ -225,17 +238,16 @@ def is_new_version(remote_v_str, local_v_str):
 
 
 class UpdateCheckerThread(threading.Thread):
-    """Asynchronously checks GitHub repository for add-on updates."""
+    """Asynchronously checks GitHub repository for add-on updates on the dev channel."""
     def __init__(self, current_version):
         super().__init__()
         self.daemon = True
         self.current_version = str(current_version)
 
     def run(self):
-        # Delay update check on startup to avoid blocking NVDA load
         time.sleep(10)
         try:
-            url = "https://raw.githubusercontent.com/UlisesMilani/dextop-whatsapp-voice/main/update.json"
+            url = "https://raw.githubusercontent.com/UlisesMilani/dextop-whatsapp-voice/main/update-dev.json"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=5.0) as response:
                 data = json.loads(response.read().decode('utf-8'))

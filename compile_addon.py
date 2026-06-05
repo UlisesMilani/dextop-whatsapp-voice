@@ -2,6 +2,18 @@ import os
 import zipfile
 import struct
 
+def get_manifest_version():
+    """Obtiene la versión del archivo manifest.ini dinámicamente."""
+    try:
+        with open("manifest.ini", "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip().startswith("version"):
+                    return line.split("=")[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return "1.0"
+
+
 def compile_po_to_mo(po_path, mo_path):
     """Compila un archivo textual .po de gettext en un archivo binario .mo."""
     messages = {}
@@ -106,7 +118,8 @@ def compile_translations():
 
 
 def compile_addon():
-    addon_name = "dextop_whatsapp_voice-1.0.nvda-addon"
+    version = get_manifest_version()
+    addon_name = f"dextop_whatsapp_voice-{version}.nvda-addon"
     
     # 0. Compilar catálogos de traducción de gettext antes de empaquetar
     compile_translations()
@@ -130,8 +143,9 @@ def compile_addon():
     if os.path.exists(addon_dir):
         for root, dirs, files in os.walk(addon_dir):
             for file in files:
-                # Omitir archivos fuentes .po de la empaquetación si se prefiere,
-                # pero los empaquetaremos para cumplir con la transparencia en la tienda.
+                # Omitir pycache
+                if "__pycache__" in root or file.endswith(".pyc"):
+                    continue
                 full_path = os.path.join(root, file)
                 rel_path = os.path.relpath(full_path, addon_dir)
                 files_to_zip.append((full_path, rel_path))

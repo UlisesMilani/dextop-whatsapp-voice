@@ -282,7 +282,7 @@ class UpdateCheckerThread(threading.Thread):
     def run(self):
         time.sleep(10)
         try:
-            url = "https://raw.githubusercontent.com/UlisesMilani/dextop-whatsapp-voice/main/update-dev.json"
+            url = f"https://raw.githubusercontent.com/UlisesMilani/dextop-whatsapp-voice/main/update-dev.json?t={int(time.time())}"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=5.0) as response:
                 data = json.loads(response.read().decode('utf-8'))
@@ -302,8 +302,8 @@ class UpdateCheckerThread(threading.Thread):
                             os.startfile("https://github.com/UlisesMilani/dextop-whatsapp-voice/releases/latest")
                     
                     wx.CallAfter(prompt_update)
-        except Exception:
-            pass
+        except Exception as e:
+            log.error(f"Dextop WhatsApp Voice: Update checker failed: {e}", exc_info=True)
 
 
 def cleanup_registry_policy():

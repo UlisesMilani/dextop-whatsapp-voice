@@ -19,3 +19,9 @@ msgstr "Hay una nueva versión de Dextop WhatsApp Voice disponible. ¿Te gustar�
 
 msgid "Update Available"
 msgstr "Actualización disponible"
+
+msgid "Dextop WhatsApp Voice: Access denied to the Windows Registry. Audio quality improvements might not work. Please try running NVDA as Administrator once or check your antivirus settings."
+msgstr "Dextop WhatsApp Voice: Acceso denegado al Registro de Windows. La mejora de calidad de audio podría no funcionar. Intente ejecutar NVDA como Administrador una vez o revise las alertas de su antivirus."
+
+msgid "Registry Access Denied"
+msgstr "Acceso denegado al registro"

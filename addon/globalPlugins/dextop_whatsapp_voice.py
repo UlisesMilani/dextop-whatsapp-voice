@@ -19,6 +19,9 @@ addonHandler.initTranslation()
 
 log = logging.getLogger("nvda.dextop_whatsapp_voice")
 
+# Module level flag to prevent duplicate dialogs in a single session
+_registry_warning_shown = False
+
 
 class MinWSClient:
     """Minimal pure-Python WebSocket client for Chrome DevTools Protocol."""
@@ -136,8 +139,24 @@ class DextopWhatsAppVoiceThread(threading.Thread):
                 log.info(f"Dextop WhatsApp Voice: Registry verified successfully: Root={val_root}, Exe={val_exe}")
             except PermissionError as pe:
                 log.error(f"Dextop WhatsApp Voice: Permission Denied writing registry at {key_path}. Policies might be locked by GPO or Antivirus: {pe}")
+                self.trigger_registry_warning()
             except Exception as e:
                 log.error(f"Dextop WhatsApp Voice: Failed to write/verify registry at {key_path}: {e}")
+
+    def trigger_registry_warning(self):
+        global _registry_warning_shown
+        if not _registry_warning_shown:
+            _registry_warning_shown = True
+            import wx
+            import gui
+            
+            def show_warn():
+                gui.messageBox(
+                    message=_("Dextop WhatsApp Voice: Access denied to the Windows Registry. Audio quality improvements might not work. Please try running NVDA as Administrator once or check your antivirus settings."),
+                    title=_("Registry Access Denied"),
+                    style=wx.OK | wx.ICON_WARNING
+                )
+            wx.CallAfter(show_warn)
 
     def find_whatsapp_ws_url(self):
         try:
@@ -220,21 +239,37 @@ class DextopWhatsAppVoiceThread(threading.Thread):
             self.connected_url = None
 
 
-def is_new_version(remote_v_str, local_v_str):
-    """Compares version strings semantic-style (e.g. 1.0-dev > 0.9-dev)."""
+def parse_version(v_str):
+    """Parses version strings like 1.0-dev1 into a comparable tuple (([1, 0], 1))."""
     try:
-        # Strip dev/beta tags for clean comparison
-        remote_clean = remote_v_str.split("-")[0]
-        local_clean = local_v_str.split("-")[0]
-        
-        remote_parts = [int(x) for x in remote_clean.split(".")]
-        local_parts = [int(x) for x in local_clean.split(".")]
-        max_len = max(len(remote_parts), len(local_parts))
-        remote_parts += [0] * (max_len - len(remote_parts))
-        local_parts += [0] * (max_len - len(local_parts))
-        return remote_parts > local_parts
+        parts = v_str.split("-")
+        version_part = parts[0]
+        dev_num = 0
+        if len(parts) > 1:
+            dev_str = parts[1]
+            digits = "".join([c for c in dev_str if c.isdigit()])
+            if digits:
+                dev_num = int(digits)
+        version_nums = [int(x) for x in version_part.split(".")]
+        return version_nums, dev_num
     except Exception:
-        return False
+        return [0], 0
+
+
+def is_new_version(remote_v_str, local_v_str):
+    """Compares version strings supporting dev channel suffixes (e.g. 1.0-dev2 > 1.0-dev1)."""
+    r_nums, r_dev = parse_version(remote_v_str)
+    l_nums, l_dev = parse_version(local_v_str)
+    
+    max_len = max(len(r_nums), len(l_nums))
+    r_nums += [0] * (max_len - len(r_nums))
+    l_nums += [0] * (max_len - len(l_nums))
+    
+    if r_nums > l_nums:
+        return True
+    elif r_nums == l_nums:
+        return r_dev > l_dev
+    return False
 
 
 class UpdateCheckerThread(threading.Thread):

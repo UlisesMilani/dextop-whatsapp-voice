@@ -152,9 +152,9 @@ class DextopWhatsAppVoiceThread(threading.Thread):
             
             def show_warn():
                 gui.messageBox(
-                    message=_("Dextop WhatsApp Voice: Access denied to the Windows Registry. Audio quality improvements might not work. Please try running NVDA as Administrator once or check your antivirus settings."),
-                    title=_("Registry Access Denied"),
-                    style=wx.OK | wx.ICON_WARNING
+                    _("Dextop WhatsApp Voice: Access denied to the Windows Registry. Audio quality improvements might not work. Please try running NVDA as Administrator once or check your antivirus settings."),
+                    _("Registry Access Denied"),
+                    wx.OK | wx.ICON_WARNING
                 )
             wx.CallAfter(show_warn)
 

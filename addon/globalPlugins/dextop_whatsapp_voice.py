@@ -125,6 +125,19 @@ class DextopWhatsAppVoiceThread(threading.Thread):
         ]
         for hkey, key_path in paths_to_write:
             try:
+                # First, check if the registry values are already set and correct
+                try:
+                    verify_key = winreg.OpenKey(hkey, key_path, 0, winreg.KEY_READ)
+                    val_root, _ = winreg.QueryValueEx(verify_key, "WhatsApp.Root.exe")
+                    val_exe, _ = winreg.QueryValueEx(verify_key, "WhatsApp.exe")
+                    winreg.CloseKey(verify_key)
+                    if val_root == "--remote-debugging-port=59222" and val_exe == "--remote-debugging-port=59222":
+                        log.info(f"Dextop WhatsApp Voice: Registry already configured at {key_path}")
+                        continue
+                except Exception:
+                    # Key or values do not exist, or are incorrect. Proceed to write them.
+                    pass
+
                 key = winreg.CreateKey(hkey, key_path)
                 winreg.SetValueEx(key, "WhatsApp.Root.exe", 0, winreg.REG_SZ, "--remote-debugging-port=59222")
                 winreg.SetValueEx(key, "WhatsApp.exe", 0, winreg.REG_SZ, "--remote-debugging-port=59222")

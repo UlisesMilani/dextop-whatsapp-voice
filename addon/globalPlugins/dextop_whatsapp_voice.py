@@ -419,10 +419,22 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         except Exception as e:
             log.error(f"Dextop WhatsApp Voice: Failed to load JS file or start the thread: {e}")
 
-        # Start update check
+        # Start update check by reading version directly from manifest.ini
         try:
-            addon = addonHandler.getCodeAddon()
-            current_version = addon.manifest['version']
+            current_version = "1.0-dev"
+            try:
+                current_dir = os.path.dirname(__file__)
+                manifest_path = os.path.join(os.path.dirname(current_dir), "manifest.ini")
+                if os.path.exists(manifest_path):
+                    with open(manifest_path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            if line.strip().startswith("version"):
+                                current_version = line.split("=")[1].strip().strip('"').strip("'")
+                                break
+                log.info(f"Dextop WhatsApp Voice: Local version detected: {current_version}")
+            except Exception as e:
+                log.error(f"Dextop WhatsApp Voice: Failed to read manifest.ini directly: {e}")
+            
             self.checker = UpdateCheckerThread(current_version)
             self.checker.start()
         except Exception as e:

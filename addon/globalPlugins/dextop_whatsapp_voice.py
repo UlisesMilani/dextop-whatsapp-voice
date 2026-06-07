@@ -120,10 +120,10 @@ class DextopWhatsAppVoiceThread(threading.Thread):
 
     def setup_registry_policy(self):
         paths_to_write = [
-            (winreg.HKEY_CURRENT_USER, r"Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"),
-            (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Edge\WebView2\AdditionalBrowserArguments")
+            (winreg.HKEY_CURRENT_USER, r"Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments", True),
+            (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Edge\WebView2\AdditionalBrowserArguments", False)
         ]
-        for hkey, key_path in paths_to_write:
+        for hkey, key_path, is_policy in paths_to_write:
             try:
                 # First, check if the registry values are already set and correct
                 try:
@@ -151,8 +151,9 @@ class DextopWhatsAppVoiceThread(threading.Thread):
                 winreg.CloseKey(verify_key)
                 log.info(f"Dextop WhatsApp Voice: Registry verified successfully: Root={val_root}, Exe={val_exe}")
             except PermissionError as pe:
-                log.error(f"Dextop WhatsApp Voice: Permission Denied writing registry at {key_path}. Policies might be locked by GPO or Antivirus: {pe}")
-                self.trigger_registry_warning()
+                log.warning(f"Dextop WhatsApp Voice: Permission Denied writing registry at {key_path}: {pe}")
+                if not is_policy:
+                    self.trigger_registry_warning()
             except Exception as e:
                 log.error(f"Dextop WhatsApp Voice: Failed to write/verify registry at {key_path}: {e}")
 

@@ -1,1 +1,0 @@
-# globalPlugins/metavoice_desktop

@@ -1,5 +1,5 @@
 // accessibility_and_audio_bridge.js - puente de audio para WhatsApp Desktop/WebView2
-// Versión 1.3: mantiene compatibilidad con WhatsApp Desktop moderno.
+// Mantiene compatibilidad con WhatsApp Desktop moderno.
 (function() {
     if (window.__dextopWhatsappVoiceInjected) {
         window.__dextopWhatsappVoiceStatus = "Ya estaba inyectado";

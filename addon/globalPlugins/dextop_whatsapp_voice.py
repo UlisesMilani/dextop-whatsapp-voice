@@ -65,9 +65,8 @@ BASE_APP_KEYS = [
     "Chrome._crx_hnpfjngllnfapefoaidbinmjnm",
 ]
 
-# Por razones de seguridad y para cumplir con los estándares de la NVDA Add-on Store,
-# no usaremos el comodín '*' ni variables de entorno del sistema por defecto.
-# Esto evita abrir puertos de depuración en otras aplicaciones WebView2.
+# Desactivado por seguridad para cumplir las políticas de la tienda de NVDA
+# (evita abrir puertos de depuración en otras aplicaciones WebView2)
 USE_WILDCARD_AND_USER_ENVIRONMENT = False
 
 
@@ -259,9 +258,6 @@ def is_debug_port_open():
     except Exception:
         return False
 
-
-# --- Utilidades y Clases de Actualización ---
-
 def parse_version(v_str):
     """Parsea cadenas de versión como 1.0-dev1 en una tupla comparable (([1, 0], 1))."""
     try:
@@ -385,9 +381,6 @@ class UpdateCheckerThread(threading.Thread):
                     wx.CallAfter(prompt_update)
         except Exception as e:
             log.error(f"Dextop WhatsApp Voice: Update checker failed: {e}", exc_info=True)
-
-
-# --- Hilo del Monitor de Inyección ---
 
 class DextopWhatsAppVoiceThread(threading.Thread):
     def __init__(self, js_code):
@@ -568,7 +561,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
         log.info("Dextop WhatsApp Voice: Iniciando inicialización...")
         
-        # Leer configuración para saber si mostrar advertencia
+        # Cargar preferencia de aviso de seguridad
         show_warning = True
         config_file = os.path.join(globalVars.appArgs.configPath, "dextop_whatsapp_voice_config.json")
         if os.path.exists(config_file):
@@ -608,7 +601,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         except Exception as e:
             log.error("Dextop WhatsApp Voice: No se pudo cargar JS o iniciar hilo: %s", e)
 
-        # Iniciar comprobación de actualizaciones usando la versión local detectada por API
+        # Comprobar actualizaciones
         try:
             addon = addonHandler.getCodeAddon()
             current_version = addon.version
@@ -624,8 +617,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             self.thread.running = False
             self.thread.join(timeout=2.0)
         
-        # Limpieza obligatoria para seguridad y cumplimiento de la NVDA Add-on Store.
-        # Restaura el registro al cerrar NVDA (incluyendo deshabilitación/reinicio).
+        # Limpiar registro al salir de NVDA para cumplir políticas de la tienda
         cleanup_registry_policy()
         super().terminate()
 

@@ -287,6 +287,13 @@ def is_new_version(remote_v_str, local_v_str):
     if r_nums > l_nums:
         return True
     elif r_nums == l_nums:
+        # Una versión estable (sin "-dev") es más nueva que una dev (con "-dev")
+        r_is_dev = "-dev" in remote_v_str
+        l_is_dev = "-dev" in local_v_str
+        if not r_is_dev and l_is_dev:
+            return True
+        elif r_is_dev and not l_is_dev:
+            return False
         return r_dev > l_dev
     return False
 

@@ -14,6 +14,9 @@
         h2 { color: #333; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
         code { background-color: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-family: Consolas, monospace; }
         ul { padding-left: 20px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background-color: #f4f4f4; }
     </style>
 </head>
 <body>
@@ -24,14 +27,46 @@
     <ul>
         <li><strong>Anula los filtros de audio agresivos:</strong> Desactiva la cancelación de eco, la supresión de ruido y el control automático de ganancia (AGC) de Chromium, permitiendo grabar un sonido directo y fiel del micrófono.</li>
         <li><strong>Fuerza Alta Calidad (Opus a 48kHz / 128kbps):</strong> Eleva los parámetros de compresión de las notas de voz a calidad de estudio para enviar audios limpios de manera nativa (con su onda y velocidades de reproducción originales).</li>
-        <li><strong>Desinstalación limpia:</strong> El complemento incluye un script de limpieza automática que remueve las políticas aplicadas al registro de Windows si decides desinstalarlo en el futuro.</li>
+        <li><strong>Desinstalación limpia:</strong> El complemento incluye un script de limpieza automática que remueve las políticas aplicadas al registro de Windows si decides desinstalarlo en el futuro o al cerrarse NVDA.</li>
     </ul>
 
     <h2>Requisitos y Uso</h2>
     <ol>
         <li>Instala el complemento en NVDA haciendo doble clic en el archivo <code>.nvda-addon</code> y confirma el reinicio del lector de pantalla.</li>
-        <li>Cierra WhatsApp Desktop por completo y vuelve a abrirlo. El complemento se conectará en segundo plano automáticamente.</li>
+        <li>Cierra WhatsApp Desktop por completo (asegúrate de que no quede en la bandeja del sistema) y vuelve a abrirlo. El complemento se conectará en segundo plano automáticamente.</li>
         <li>Graba tus notas de voz utilizando el botón nativo de WhatsApp Desktop como de costumbre.</li>
     </ol>
+
+    <h2>Atajos de teclado</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Atajo</th>
+                <th>Descripción</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>NVDA+Shift+W</code></td>
+                <td>Consultar estado del complemento (inyección y conexión).</td>
+            </tr>
+            <tr>
+                <td><code>NVDA+Control+Shift+W</code></td>
+                <td>Reescribir la configuración del registro para WhatsApp Desktop.</td>
+            </tr>
+            <tr>
+                <td><code>NVDA+Alt+Shift+W</code></td>
+                <td>Desactivar y limpiar toda la configuración de WhatsApp Desktop en el registro.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Aviso de Seguridad</h2>
+    <p>Este complemento activa un puerto local de depuración en <code>127.0.0.1:59222</code> para comunicarse con WhatsApp Desktop mediante el protocolo de Chromium (WebView2) e inyectar el script de audio de alta fidelidad.</p>
+    <ul>
+        <li>No se recopila ni se envía ningún dato a servidores externos en esta versión. Todo el procesamiento de audio se realiza de forma local en tu computadora.</li>
+        <li>Se recomienda usar este complemento exclusivamente en computadoras personales o de absoluta confianza. No se aconseja su uso en computadoras públicas o compartidas.</li>
+        <li>Cualquier cambio realizado en el registro es estrictamente temporal y se limpiará automáticamente cada vez que se cierre o deshabilite NVDA, así como al desinstalar el complemento.</li>
+    </ul>
 </body>
 </html>

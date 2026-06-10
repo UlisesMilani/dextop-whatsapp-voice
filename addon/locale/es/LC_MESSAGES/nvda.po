@@ -34,3 +34,16 @@ msgstr "Dextop WhatsApp Voice: Acceso denegado al Registro de Windows. La mejora
 
 msgid "Registry Access Denied"
 msgstr "Acceso denegado al registro"
+
+msgid "Don't show this warning again"
+msgstr "No volver a mostrar esta advertencia"
+
+msgid "Read Documentation"
+msgstr "Leer documentación"
+
+msgid "Dextop WhatsApp Voice - Security Warning"
+msgstr "Dextop WhatsApp Voice - Advertencia de seguridad"
+
+msgid "Security Warning:\n\nThis add-on enables a local debugging port on 127.0.0.1:59222 to inject a high-fidelity audio bridge into WhatsApp Desktop. No data transmission to external servers was observed, but it is recommended to use it only on trusted personal computers.\n\nTo begin:\n1. Close WhatsApp completely.\n2. Open WhatsApp again.\n3. Verify the status using NVDA+Shift+W.\n\nFor more information, please read the add-on documentation."
+msgstr "Advertencia de Seguridad:\n\nEste complemento activa un puerto local de depuración en 127.0.0.1:59222 para inyectar un puente de audio de alta fidelidad en WhatsApp Desktop. No se observó envío de datos a servidores externos, pero se recomienda usarlo solo en computadoras personales de confianza.\n\nPara comenzar:\n1. Cierra WhatsApp completamente.\n2. Abre WhatsApp de nuevo.\n3. Verifica el estado usando el atajo NVDA+Shift+W.\n\nPara saber más, por favor lee la documentación del complemento."
+

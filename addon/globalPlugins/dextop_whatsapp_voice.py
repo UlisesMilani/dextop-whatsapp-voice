@@ -1,58 +1,108 @@
+# -*- coding: utf-8 -*-
+"""Dextop WhatsApp Voice - NVDA global plugin.
+
+Mejora la grabación de audios de WhatsApp Desktop moderno basado en WebView2.
+La versión 1.0 (estable) agrega compatibilidad con Chromium/WebView2 recientes mediante
+--remote-allow-origins=http://127.0.0.1, herramientas de diagnóstico y comprobación de actualización.
+"""
+
+import base64
+import ctypes
 import globalPluginHandler
 import globalVars
-import os
-import logging
-import threading
-import time
-import urllib.request
-import urllib.parse
 import json
+import logging
+import os
+import random
 import socket
 import struct
-import base64
-import random
+import subprocess
+import threading
+import time
+import urllib.parse
+import urllib.request
 import winreg
-import addonHandler
 
-# Initialize translation support
+import addonHandler
+import wx
+
+try:
+    import ui
+except Exception:
+    ui = None
+try:
+    import gui
+except Exception:
+    gui = None
+try:
+    from scriptHandler import script
+except Exception:
+    script = None
+
 addonHandler.initTranslation()
 
 log = logging.getLogger("nvda.dextop_whatsapp_voice")
 
-# Module level flag to prevent duplicate dialogs in a single session
-_registry_warning_shown = False
+DEBUG_PORT = 59222
+DEBUG_ARG = "--remote-debugging-port=%d --remote-allow-origins=http://127.0.0.1" % DEBUG_PORT
+ENV_NAME = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"
+REG_PATHS = [
+    r"Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments",
+    r"Software\Microsoft\Edge\WebView2\AdditionalBrowserArguments",
+]
+ENV_REG_PATH = r"Environment"
+
+# Nombres conocidos para WhatsApp Desktop moderno y variantes usadas por Microsoft Store / WebView2.
+BASE_APP_KEYS = [
+    "WhatsApp.Root.exe",
+    "WhatsApp.exe",
+    "WhatsAppDesktop.exe",
+    "5319275A.WhatsAppDesktop",
+    "5319275A.WhatsAppDesktop_cv1g1gvanyjgm",
+    "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App",
+    "5319275A.WhatsAppDesktop_cv1g1gvanyjgm!WhatsApp",
+    # Variante cuando WhatsApp se instaló como app/progresiva desde Chrome.
+    "Chrome._crx_hnpfjngllnfapefoaidbinmjnm",
+]
+
+# Por razones de seguridad y para cumplir con los estándares de la NVDA Add-on Store,
+# no usaremos el comodín '*' ni variables de entorno del sistema por defecto.
+# Esto evita abrir puertos de depuración en otras aplicaciones WebView2.
+USE_WILDCARD_AND_USER_ENVIRONMENT = False
 
 
 class MinWSClient:
-    """Minimal pure-Python WebSocket client for Chrome DevTools Protocol."""
+    """Cliente WebSocket mínimo para comunicarse con Chrome DevTools Protocol."""
+
     def __init__(self, ws_url):
         self.ws_url = ws_url
         self.sock = None
 
     def connect(self):
         parsed = urllib.parse.urlparse(self.ws_url)
-        host = parsed.hostname
-        port = parsed.port or 80
-        path = parsed.path
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or DEBUG_PORT
+        path = parsed.path or "/"
         if parsed.query:
             path += "?" + parsed.query
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.settimeout(2.0)
+        self.sock.settimeout(4.0)
         self.sock.connect((host, port))
 
-        # Perform handshake
-        sec_key = base64.b64encode(bytes(random.randint(0, 255) for _ in range(16))).decode('utf-8')
+        sec_key = base64.b64encode(bytes(random.randint(0, 255) for _ in range(16))).decode("utf-8")
         handshake = (
-            f"GET {path} HTTP/1.1\r\n"
-            f"Host: {host}:{port}\r\n"
+            "GET %s HTTP/1.1\r\n"
+            "Host: %s:%d\r\n"
             "Upgrade: websocket\r\n"
             "Connection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {sec_key}\r\n"
-            "Sec-WebSocket-Version: 13\r\n\r\n"
-        )
-        self.sock.sendall(handshake.encode('utf-8'))
-        
+            "Sec-WebSocket-Key: %s\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "Origin: http://127.0.0.1\r\n\r\n"
+        ) % (path, host, port, sec_key)
+        self.sock.sendall(handshake.encode("utf-8"))
+
+        # Recibir respuesta del handshake
         response = b""
         while b"\r\n\r\n" not in response:
             chunk = self.sock.recv(1024)
@@ -60,16 +110,14 @@ class MinWSClient:
                 break
             response += chunk
             if len(response) > 8192:
-                raise Exception("Handshake response too long")
-
+                raise Exception("Handshake de WebSocket demasiado largo")
         if b" 101 " not in response:
-            raise Exception("WebSocket handshake failed")
+            raise Exception("Fallo en el handshake de WebSocket: " + response[:300].decode("utf-8", "ignore"))
 
     def send_text(self, text):
-        data = text.encode('utf-8')
+        data = text.encode("utf-8")
         length = len(data)
-        frame = bytearray([0x81]) # FIN=1, Opcode=1 (Text)
-        
+        frame = bytearray([0x81])
         if length < 126:
             frame.append(0x80 | length)
         elif length <= 0xFFFF:
@@ -78,12 +126,9 @@ class MinWSClient:
         else:
             frame.append(0x80 | 127)
             frame.extend(struct.pack("!Q", length))
-            
         mask = [random.randint(0, 255) for _ in range(4)]
         frame.extend(mask)
-        
-        masked_data = bytearray(b ^ mask[i % 4] for i, b in enumerate(data))
-        frame.extend(masked_data)
+        frame.extend(bytearray(b ^ mask[i % 4] for i, b in enumerate(data)))
         self.sock.sendall(frame)
 
     def close(self):
@@ -95,166 +140,130 @@ class MinWSClient:
             self.sock = None
 
 
-class DextopWhatsAppVoiceThread(threading.Thread):
-    """Background thread to monitor WhatsApp Desktop WebView2 and inject the script."""
-    def __init__(self, js_code):
-        super().__init__()
-        self.daemon = True
-        self.js_code = js_code
-        self.running = True
-        self.connected_url = None
-
-    def run(self):
-        self.setup_registry_policy()
-
-        while self.running:
-            if not self.connected_url:
-                try:
-                    ws_url = self.find_whatsapp_ws_url()
-                    if ws_url:
-                        log.info(f"Dextop WhatsApp Voice: WhatsApp debugging port detected. Connecting to {ws_url}...")
-                        self.inject_and_hold(ws_url)
-                except Exception as e:
-                    log.error(f"Dextop WhatsApp Voice: Error in the injection loop: {e}")
-            time.sleep(5)
-
-    def setup_registry_policy(self):
-        paths_to_write = [
-            (winreg.HKEY_CURRENT_USER, r"Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments", True),
-            (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Edge\WebView2\AdditionalBrowserArguments", False)
+def discover_whatsapp_app_ids():
+    """Intenta descubrir AppUserModelIDs de WhatsApp publicados en el menú inicio."""
+    ids = []
+    try:
+        cmd = [
+            "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+            "Get-StartApps | Where-Object { $_.Name -match 'WhatsApp' } | Select-Object -ExpandProperty AppID"
         ]
-        for hkey, key_path, is_policy in paths_to_write:
-            try:
-                # First, check if the registry values are already set and correct
-                try:
-                    verify_key = winreg.OpenKey(hkey, key_path, 0, winreg.KEY_READ)
-                    val_root, _ = winreg.QueryValueEx(verify_key, "WhatsApp.Root.exe")
-                    val_exe, _ = winreg.QueryValueEx(verify_key, "WhatsApp.exe")
-                    winreg.CloseKey(verify_key)
-                    if val_root == "--remote-debugging-port=59222" and val_exe == "--remote-debugging-port=59222":
-                        log.info(f"Dextop WhatsApp Voice: Registry already configured at {key_path}")
-                        continue
-                except Exception:
-                    # Key or values do not exist, or are incorrect. Proceed to write them.
-                    pass
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=6, creationflags=0x08000000)
+        for line in (result.stdout or "").splitlines():
+            line = line.strip()
+            if line and "whatsapp" in line.lower():
+                ids.append(line)
+    except Exception as e:
+        log.debug("Dextop WhatsApp Voice: No se pudo descubrir AppID por PowerShell: %s", e)
+    return ids
 
-                key = winreg.CreateKey(hkey, key_path)
-                winreg.SetValueEx(key, "WhatsApp.Root.exe", 0, winreg.REG_SZ, "--remote-debugging-port=59222")
-                winreg.SetValueEx(key, "WhatsApp.exe", 0, winreg.REG_SZ, "--remote-debugging-port=59222")
-                winreg.CloseKey(key)
-                log.info(f"Dextop WhatsApp Voice: Registry configured at {key_path}")
-                
-                # Verification read
-                verify_key = winreg.OpenKey(hkey, key_path, 0, winreg.KEY_READ)
-                val_root, _ = winreg.QueryValueEx(verify_key, "WhatsApp.Root.exe")
-                val_exe, _ = winreg.QueryValueEx(verify_key, "WhatsApp.exe")
-                winreg.CloseKey(verify_key)
-                log.info(f"Dextop WhatsApp Voice: Registry verified successfully: Root={val_root}, Exe={val_exe}")
-            except PermissionError as pe:
-                log.warning(f"Dextop WhatsApp Voice: Permission Denied writing registry at {key_path}: {pe}")
-                if not is_policy:
-                    self.trigger_registry_warning()
-            except Exception as e:
-                log.error(f"Dextop WhatsApp Voice: Failed to write/verify registry at {key_path}: {e}")
 
-    def trigger_registry_warning(self):
-        global _registry_warning_shown
-        if not _registry_warning_shown:
-            _registry_warning_shown = True
-            import wx
-            import gui
-            
-            def show_warn():
-                gui.messageBox(
-                    _("Dextop WhatsApp Voice: Access denied to the Windows Registry. Audio quality improvements might not work. Please try running NVDA as Administrator once or check your antivirus settings."),
-                    _("Registry Access Denied"),
-                    wx.OK | wx.ICON_WARNING
-                )
-            wx.CallAfter(show_warn)
+def registry_value_names():
+    names = list(dict.fromkeys(BASE_APP_KEYS + discover_whatsapp_app_ids()))
+    if USE_WILDCARD_AND_USER_ENVIRONMENT:
+        names.append("*")
+    return names
 
-    def find_whatsapp_ws_url(self):
+
+def _broadcast_environment_change():
+    """Notifica a Explorer que cambió el entorno de usuario."""
+    try:
+        HWND_BROADCAST = 0xFFFF
+        WM_SETTINGCHANGE = 0x001A
+        SMTO_ABORTIFHUNG = 0x0002
+        ctypes.windll.user32.SendMessageTimeoutW(
+            HWND_BROADCAST,
+            WM_SETTINGCHANGE,
+            0,
+            "Environment",
+            SMTO_ABORTIFHUNG,
+            3000,
+            None,
+        )
+    except Exception as e:
+        log.debug("Dextop WhatsApp Voice: No se pudo enviar WM_SETTINGCHANGE: %s", e)
+
+
+def write_user_environment_argument():
+    if not USE_WILDCARD_AND_USER_ENVIRONMENT:
+        return
+    try:
+        os.environ[ENV_NAME] = DEBUG_ARG
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, ENV_REG_PATH)
+        winreg.SetValueEx(key, ENV_NAME, 0, winreg.REG_SZ, DEBUG_ARG)
+        winreg.CloseKey(key)
+        _broadcast_environment_change()
+        log.info("Dextop WhatsApp Voice: Variable de entorno de usuario configurada.")
+    except Exception as e:
+        log.error("Dextop WhatsApp Voice: No se pudo configurar variable de entorno: %s", e)
+
+
+def remove_user_environment_argument():
+    try:
+        os.environ.pop(ENV_NAME, None)
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, ENV_REG_PATH, 0, winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE)
         try:
-            url = "http://127.0.0.1:59222/json"
-            req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=2.0) as response:
-                data = json.loads(response.read().decode('utf-8'))
-            
-            for target in data:
-                t_type = target.get('type', '')
-                t_url = target.get('url', '')
-                ws_url = target.get('webSocketDebuggerUrl', '')
-                
-                if t_type == 'page' and ws_url:
-                    if 'web.whatsapp.com' in t_url or 'whatsapp' in t_url or 'about:blank' in t_url:
-                        return ws_url
-        except Exception:
+            current, _ = winreg.QueryValueEx(key, ENV_NAME)
+            if current == DEBUG_ARG or "remote-debugging-port=%d" % DEBUG_PORT in str(current):
+                winreg.DeleteValue(key, ENV_NAME)
+                log.info("Dextop WhatsApp Voice: Variable de entorno de usuario eliminada.")
+        except FileNotFoundError:
             pass
-        return None
+        winreg.CloseKey(key)
+        _broadcast_environment_change()
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        log.error("Dextop WhatsApp Voice: Error eliminando variable de entorno: %s", e)
 
-    def inject_and_hold(self, ws_url):
-        client = None
+
+def write_registry_policy():
+    names = registry_value_names()
+    for key_path in REG_PATHS:
         try:
-            client = MinWSClient(ws_url)
-            client.connect()
-            self.connected_url = ws_url
-
-            # Enable Page API
-            client.send_text(json.dumps({
-                "id": 1,
-                "method": "Page.enable"
-            }))
-            time.sleep(0.1)
-
-            # Auto-inject script on page reloads/navigations
-            client.send_text(json.dumps({
-                "id": 2,
-                "method": "Page.addScriptToEvaluateOnNewDocument",
-                "params": {
-                    "source": self.js_code
-                }
-            }))
-            time.sleep(0.1)
-
-            # Inject script immediately into current session
-            client.send_text(json.dumps({
-                "id": 3,
-                "method": "Runtime.evaluate",
-                "params": {
-                    "expression": self.js_code
-                }
-            }))
-            log.info("Dextop WhatsApp Voice: Script successfully injected into the WhatsApp Desktop window!")
-
-            # Hold WebSocket connection open to check if target is alive
-            client.sock.settimeout(1.0)
-            while self.running:
-                try:
-                    data = client.sock.recv(1024)
-                    if not data:
-                        log.info("Dextop WhatsApp Voice: WebSocket connection closed by WhatsApp.")
-                        break
-                except socket.timeout:
-                    # Ping target to validate connection channel
-                    try:
-                        client.send_text(json.dumps({
-                            "id": 999,
-                            "method": "Runtime.evaluate",
-                            "params": {"expression": "1+1"}
-                        }))
-                    except Exception:
-                        log.info("Dextop WhatsApp Voice: WebSocket channel lost.")
-                        break
-                time.sleep(5)
+            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path)
+            for name in names:
+                winreg.SetValueEx(key, name, 0, winreg.REG_SZ, DEBUG_ARG)
+            winreg.CloseKey(key)
+            log.info("Dextop WhatsApp Voice: Registro configurado en %s para: %s", key_path, ", ".join(names))
         except Exception as e:
-            log.error(f"Dextop WhatsApp Voice: Error during the CDP injection session: {e}")
-        finally:
-            if client:
-                client.close()
-            self.connected_url = None
+            log.error("Dextop WhatsApp Voice: No se pudo escribir %s: %s", key_path, e)
+    write_user_environment_argument()
 
+
+def cleanup_registry_policy():
+    names = list(dict.fromkeys(BASE_APP_KEYS + discover_whatsapp_app_ids() + ["*"]))
+    for key_path in REG_PATHS:
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE)
+            for name in names:
+                try:
+                    current, _ = winreg.QueryValueEx(key, name)
+                    if current == DEBUG_ARG or "remote-debugging-port=%d" % DEBUG_PORT in str(current):
+                        winreg.DeleteValue(key, name)
+                        log.info("Dextop WhatsApp Voice: Registro limpiado en %s para %s", key_path, name)
+                except FileNotFoundError:
+                    pass
+            winreg.CloseKey(key)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log.error("Dextop WhatsApp Voice: Error limpiando registro: %s", e)
+    remove_user_environment_argument()
+
+
+def is_debug_port_open():
+    try:
+        with socket.create_connection(("127.0.0.1", DEBUG_PORT), timeout=1.0):
+            return True
+    except Exception:
+        return False
+
+
+# --- Utilidades y Clases de Actualización ---
 
 def parse_version(v_str):
-    """Parses version strings like 1.0-dev1 into a comparable tuple (([1, 0], 1))."""
+    """Parsea cadenas de versión como 1.0-dev1 en una tupla comparable (([1, 0], 1))."""
     try:
         parts = v_str.split("-")
         version_part = parts[0]
@@ -271,14 +280,14 @@ def parse_version(v_str):
 
 
 def is_new_version(remote_v_str, local_v_str):
-    """Compares version strings supporting dev channel suffixes (e.g. 1.0-dev2 > 1.0-dev1)."""
+    """Compara cadenas de versión soportando sufijos del canal de desarrollo (ej. 1.0-dev2 > 1.0-dev1)."""
     r_nums, r_dev = parse_version(remote_v_str)
     l_nums, l_dev = parse_version(local_v_str)
-    
+
     max_len = max(len(r_nums), len(l_nums))
     r_nums += [0] * (max_len - len(r_nums))
     l_nums += [0] * (max_len - len(l_nums))
-    
+
     if r_nums > l_nums:
         return True
     elif r_nums == l_nums:
@@ -287,7 +296,7 @@ def is_new_version(remote_v_str, local_v_str):
 
 
 def notify_message(msg):
-    """Speaks a message and displays it in braille via NVDA's ui module."""
+    """Habla un mensaje y lo muestra en braille a través del módulo ui de NVDA."""
     try:
         import ui
         import wx
@@ -297,7 +306,8 @@ def notify_message(msg):
 
 
 class UpdateDownloaderThread(threading.Thread):
-    """Downloads the .nvda-addon package in the background and runs it."""
+    """Descarga el paquete .nvda-addon en segundo plano y lo ejecuta para su instalación."""
+
     def __init__(self, download_url):
         super().__init__()
         self.daemon = True
@@ -311,21 +321,20 @@ class UpdateDownloaderThread(threading.Thread):
                 import tempfile
                 temp_dir = tempfile.gettempdir()
                 temp_path = os.path.join(temp_dir, "dextop_whatsapp_voice_update.nvda-addon")
-                
-                # Delete existing file if present
+
                 if os.path.exists(temp_path):
                     try:
                         os.remove(temp_path)
                     except Exception:
                         pass
-                
+
                 with open(temp_path, "wb") as f:
                     while True:
                         chunk = response.read(1024 * 16)
                         if not chunk:
                             break
                         f.write(chunk)
-                
+
                 notify_message(_("Download complete. Starting installation..."))
                 os.startfile(temp_path)
         except Exception as e:
@@ -338,7 +347,8 @@ class UpdateDownloaderThread(threading.Thread):
 
 
 class UpdateCheckerThread(threading.Thread):
-    """Asynchronously checks GitHub repository for add-on updates on the dev channel."""
+    """Comprueba de forma asíncrona actualizaciones en GitHub según el canal actual de la versión."""
+
     def __init__(self, current_version):
         super().__init__()
         self.daemon = True
@@ -347,7 +357,9 @@ class UpdateCheckerThread(threading.Thread):
     def run(self):
         time.sleep(10)
         try:
-            url = f"https://raw.githubusercontent.com/UlisesMilani/dextop-whatsapp-voice/main/update-dev.json?t={int(time.time())}"
+            # Elegir dinámicamente el archivo según el canal
+            version_file = "update-dev.json" if "-dev" in self.current_version else "update.json"
+            url = f"https://raw.githubusercontent.com/UlisesMilani/dextop-whatsapp-voice/main/{version_file}?t={int(time.time())}"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=5.0) as response:
                 data = json.loads(response.read().decode('utf-8'))
@@ -356,7 +368,7 @@ class UpdateCheckerThread(threading.Thread):
                     import wx
                     import gui
                     download_url = data.get("downloadUrl")
-                    
+
                     def prompt_update():
                         res = gui.messageBox(
                             _("A new version of Dextop WhatsApp Voice is available. Would you like to download and install it now?"),
@@ -369,72 +381,288 @@ class UpdateCheckerThread(threading.Thread):
                                 downloader.start()
                             else:
                                 os.startfile("https://github.com/UlisesMilani/dextop-whatsapp-voice/releases/latest")
-                    
+
                     wx.CallAfter(prompt_update)
         except Exception as e:
             log.error(f"Dextop WhatsApp Voice: Update checker failed: {e}", exc_info=True)
 
 
-def cleanup_registry_policy():
-    """Removes remote debugging registry keys for WhatsApp."""
-    paths_to_clean = [
-        (winreg.HKEY_CURRENT_USER, r"Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"),
-        (winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Edge\WebView2\AdditionalBrowserArguments")
-    ]
-    for hkey, key_path in paths_to_clean:
+# --- Hilo del Monitor de Inyección ---
+
+class DextopWhatsAppVoiceThread(threading.Thread):
+    def __init__(self, js_code):
+        super().__init__()
+        self.daemon = True
+        self.js_code = js_code
+        self.running = True
+        self.connected_url = None
+        self.last_status = "Iniciando"
+        self.last_error = ""
+        self.last_targets = []
+        self.inject_count = 0
+
+    def run(self):
+        write_registry_policy()
+        self.last_status = "Configurado. Abre WhatsApp o ciérralo completamente y vuelve a abrirlo."
+        while self.running:
+            try:
+                if not self.connected_url:
+                    ws_url = self.find_whatsapp_ws_url()
+                    if ws_url:
+                        log.info("Dextop WhatsApp Voice: Puerto detectado. Conectando a %s", ws_url)
+                        self.inject_and_hold(ws_url)
+                    else:
+                        if is_debug_port_open():
+                            self.last_status = "Puerto abierto, esperando página de WhatsApp"
+                        else:
+                            self.last_status = "Esperando WhatsApp con puerto %d. Cierra y abre WhatsApp si ya estaba abierto." % DEBUG_PORT
+                time.sleep(3)
+            except Exception as e:
+                self.last_error = str(e)
+                self.last_status = "Error en bucle de inyección"
+                log.error("Dextop WhatsApp Voice: Error en bucle de inyección: %s", e)
+                time.sleep(3)
+
+    def get_json_targets(self):
+        last_exc = None
+        for endpoint in ("json/list", "json"):
+            try:
+                url = "http://127.0.0.1:%d/%s" % (DEBUG_PORT, endpoint)
+                req = urllib.request.Request(url)
+                with urllib.request.urlopen(req, timeout=2.0) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except Exception as e:
+                last_exc = e
+        raise last_exc or Exception("No se pudo leer lista CDP")
+
+    def find_whatsapp_ws_url(self):
         try:
-            key = winreg.OpenKey(hkey, key_path, 0, winreg.KEY_SET_VALUE)
-            for name in ["WhatsApp.Root.exe", "WhatsApp.exe"]:
-                try:
-                    winreg.DeleteValue(key, name)
-                    log.info(f"Dextop WhatsApp Voice: Registry cleaned at {key_path} for {name}")
-                except FileNotFoundError:
-                    pass
-            winreg.CloseKey(key)
-        except FileNotFoundError:
-            pass
+            data = self.get_json_targets()
+            self.last_targets = data if isinstance(data, list) else []
+            # Primero preferir la página real de WhatsApp Web.
+            for target in self.last_targets:
+                t_type = target.get("type", "")
+                t_url = target.get("url", "")
+                title = target.get("title", "")
+                ws_url = target.get("webSocketDebuggerUrl", "")
+                combined = (t_url + " " + title).lower()
+                if t_type == "page" and ws_url and ("web.whatsapp.com" in combined or "whatsapp" in combined):
+                    return ws_url
+            # Si el WebView todavía carga en blanco, usar la página disponible.
+            for target in self.last_targets:
+                if target.get("type") == "page" and target.get("webSocketDebuggerUrl"):
+                    return target.get("webSocketDebuggerUrl")
         except Exception as e:
-            log.error(f"Dextop WhatsApp Voice: Error cleaning registry: {e}")
+            self.last_error = str(e)
+        return None
+
+    def inject_and_hold(self, ws_url):
+        client = None
+        try:
+            client = MinWSClient(ws_url)
+            client.connect()
+            self.connected_url = ws_url
+            self.last_status = "Conectado al WebView de WhatsApp"
+            self.last_error = ""
+
+            commands = [
+                {"id": 1, "method": "Page.enable"},
+                {"id": 2, "method": "Runtime.enable"},
+                {"id": 3, "method": "Page.addScriptToEvaluateOnNewDocument", "params": {"source": self.js_code}},
+                {"id": 4, "method": "Runtime.evaluate", "params": {"expression": self.js_code, "awaitPromise": False}},
+            ]
+            for cmd in commands:
+                client.send_text(json.dumps(cmd))
+                time.sleep(0.15)
+
+            self.inject_count += 1
+            log.info("Dextop WhatsApp Voice: Script inyectado en WhatsApp Desktop.")
+            self.last_status = "Conectado e inyectado. Prueba grabar un audio nuevo."
+
+            client.sock.settimeout(1.0)
+            while self.running:
+                try:
+                    data = client.sock.recv(1024)
+                    if not data:
+                        log.info("Dextop WhatsApp Voice: WebSocket cerrado por WhatsApp.")
+                        break
+                except socket.timeout:
+                    try:
+                        client.send_text(json.dumps({
+                            "id": 9000 + self.inject_count,
+                            "method": "Runtime.evaluate",
+                            "params": {"expression": "window.__dextopWhatsappVoiceStatus || 'sin estado'"}
+                        }))
+                    except Exception:
+                        log.info("Dextop WhatsApp Voice: Canal WebSocket perdido.")
+                        break
+                time.sleep(5)
+        except Exception as e:
+            self.last_error = str(e)
+            self.last_status = "Error al inyectar"
+            log.error("Dextop WhatsApp Voice: Error durante inyección CDP: %s", e)
+        finally:
+            if client:
+                client.close()
+            self.connected_url = None
+
+
+class SecurityWarningDialog(wx.Dialog):
+    """Diálogo de advertencia de seguridad inicial y atajos."""
+    def __init__(self, parent, title, message, config_file):
+        super().__init__(parent, title=title, style=wx.DEFAULT_DIALOG_STYLE | wx.STAY_ON_TOP)
+        self.config_file = config_file
+        
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        
+        text = wx.StaticText(self, label=message)
+        text.Wrap(450)
+        sizer.Add(text, 0, wx.ALL | wx.EXPAND, 15)
+        
+        self.dont_show_checkbox = wx.CheckBox(self, label=_("Don't show this warning again"))
+        sizer.Add(self.dont_show_checkbox, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 15)
+        
+        btn_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        
+        ok_btn = wx.Button(self, wx.ID_OK, label=_("OK"))
+        ok_btn.SetDefault()
+        btn_sizer.Add(ok_btn, 0, wx.ALL, 5)
+        
+        info_btn = wx.Button(self, label=_("Read Documentation"))
+        info_btn.Bind(wx.EVT_BUTTON, self.on_info)
+        btn_sizer.Add(info_btn, 0, wx.ALL, 5)
+        
+        sizer.Add(btn_sizer, 0, wx.ALIGN_CENTER | wx.BOTTOM, 15)
+        
+        self.SetSizer(sizer)
+        self.Fit()
+        self.CenterOnScreen()
+
+    def on_info(self, event):
+        try:
+            addon = addonHandler.getCodeAddon()
+            doc_path = addon.getDocFilePath("readme.html")
+            if doc_path and os.path.exists(doc_path):
+                os.startfile(doc_path)
+            else:
+                os.startfile("https://github.com/UlisesMilani/dextop-whatsapp-voice")
+        except Exception:
+            pass
+
+    def Destroy(self):
+        if self.dont_show_checkbox.GetValue():
+            try:
+                with open(self.config_file, "w") as f:
+                    json.dump({"show_warning": False}, f)
+            except Exception:
+                pass
+        return super().Destroy()
 
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def __init__(self):
         super().__init__()
-        # Validate secure screens
         if globalVars.appArgs.secure:
-            log.warning("Dextop WhatsApp Voice: Disabled on secure screens for security reasons.")
+            log.warning("Dextop WhatsApp Voice: Deshabilitado en pantallas seguras.")
             raise ValueError(_("This add-on cannot be run on secure screens."))
 
-        log.info("Dextop WhatsApp Voice: Global plugin initializing...")
+        log.info("Dextop WhatsApp Voice: Iniciando inicialización...")
         
+        # Leer configuración para saber si mostrar advertencia
+        show_warning = True
+        config_file = os.path.join(globalVars.appArgs.configPath, "dextop_whatsapp_voice_config.json")
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, "r") as f:
+                    cfg = json.load(f)
+                    show_warning = cfg.get("show_warning", True)
+            except Exception:
+                pass
+
+        if show_warning and gui:
+            def show_warn():
+                msg = _(
+                    "Security Warning:\n\n"
+                    "This add-on enables a local debugging port on 127.0.0.1:59222 to inject a high-fidelity audio bridge into WhatsApp Desktop. "
+                    "No data transmission to external servers was observed, but it is recommended to use it only on trusted personal computers.\n\n"
+                    "To begin:\n"
+                    "1. Close WhatsApp completely.\n"
+                    "2. Open WhatsApp again.\n"
+                    "3. Verify the status using NVDA+Shift+W.\n\n"
+                    "For more information, please read the add-on documentation."
+                )
+                parent = gui.mainFrame
+                dlg = SecurityWarningDialog(parent, _("Dextop WhatsApp Voice - Security Warning"), msg, config_file)
+                dlg.ShowModal()
+                dlg.Destroy()
+            wx.CallAfter(show_warn)
+        self.thread = None
         try:
             current_dir = os.path.dirname(__file__)
             js_path = os.path.join(current_dir, "accessibility_and_audio_bridge.js")
             with open(js_path, "r", encoding="utf-8") as f:
                 js_code = f.read()
-            
-            # Start monitoring thread
             self.thread = DextopWhatsAppVoiceThread(js_code)
             self.thread.start()
-            log.info("Dextop WhatsApp Voice: Monitoring thread and injection initialized successfully.")
+            log.info("Dextop WhatsApp Voice: Hilo iniciado.")
         except Exception as e:
-            log.error(f"Dextop WhatsApp Voice: Failed to load JS file or start the thread: {e}")
+            log.error("Dextop WhatsApp Voice: No se pudo cargar JS o iniciar hilo: %s", e)
 
-        # Start update check using the official Addon.version API
+        # Iniciar comprobación de actualizaciones usando la versión local detectada por API
         try:
             addon = addonHandler.getCodeAddon()
             current_version = addon.version
-            log.info(f"Dextop WhatsApp Voice: Local version detected via API: {current_version}")
+            log.info("Dextop WhatsApp Voice: Inicializando complemento %s.", current_version)
             self.checker = UpdateCheckerThread(current_version)
             self.checker.start()
         except Exception as e:
-            log.error(f"Dextop WhatsApp Voice: Failed to start update checker: {e}")
+            log.error("Dextop WhatsApp Voice: No se pudo iniciar el comprobador de actualización: %s", e)
 
     def terminate(self):
-        log.info("Dextop WhatsApp Voice: Terminating plugin...")
-        if hasattr(self, 'thread'):
+        log.info("Dextop WhatsApp Voice: Terminando complemento.")
+        if self.thread:
             self.thread.running = False
             self.thread.join(timeout=2.0)
         
+        # Limpieza obligatoria para seguridad y cumplimiento de la NVDA Add-on Store.
+        # Restaura el registro al cerrar NVDA (incluyendo deshabilitación/reinicio).
         cleanup_registry_policy()
         super().terminate()
+
+    if script:
+        @script(description=_("Check Dextop WhatsApp Voice status"), gesture="kb:NVDA+shift+w")
+        def script_checkWhatsAppVoiceStatus(self, gesture):
+            msg = "Dextop WhatsApp Voice: "
+            if not self.thread:
+                msg += "el hilo no inició."
+            elif self.thread.connected_url:
+                msg += "conectado e inyectado."
+            else:
+                msg += self.thread.last_status
+                if self.thread.last_error:
+                    msg += ". Error: " + self.thread.last_error
+            if ui:
+                ui.message(msg)
+            log.info(msg)
+
+        @script(description=_("Rewrite WebView2 registry keys for Dextop WhatsApp Voice"), gesture="kb:NVDA+control+shift+w")
+        def script_rewriteWhatsAppVoiceRegistry(self, gesture):
+            write_registry_policy()
+            msg = "Dextop WhatsApp Voice: configuración reescrita. Cierra WhatsApp completamente y vuelve a abrirlo."
+            if self.thread:
+                self.thread.last_status = msg
+                self.thread.last_error = ""
+            if ui:
+                ui.message(msg)
+            log.info(msg)
+
+        @script(description=_("Disable Dextop WhatsApp Voice WebView2 configuration"), gesture="kb:NVDA+alt+shift+w")
+        def script_disableWhatsAppVoiceConfig(self, gesture):
+            cleanup_registry_policy()
+            msg = "Dextop WhatsApp Voice: configuración desactivada. Cierra y vuelve a abrir WhatsApp para quitar el puerto."
+            if self.thread:
+                self.thread.last_status = msg
+                self.thread.last_error = ""
+            if ui:
+                ui.message(msg)
+            log.info(msg)

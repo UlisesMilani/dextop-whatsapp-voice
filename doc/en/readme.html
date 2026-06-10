@@ -14,6 +14,9 @@
         h2 { color: #333; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
         code { background-color: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-family: Consolas, monospace; }
         ul { padding-left: 20px; }
+        table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background-color: #f4f4f4; }
     </style>
 </head>
 <body>
@@ -24,14 +27,46 @@
     <ul>
         <li><strong>Disables aggressive audio filters:</strong> Deactivates Chromium's echo cancellation, noise suppression, and auto gain control (AGC), allowing you to record direct and clean microphone audio.</li>
         <li><strong>Forces High Quality (Opus 48kHz / 128kbps):</strong> Modifies WhatsApp's internal Opus compression parameters to studio quality, sending clean native voice notes (with their waveforms and playback speed controls).</li>
-        <li><strong>Clean Uninstall:</strong> Includes an automated script that removes any registry modifications if you choose to uninstall the add-on.</li>
+        <li><strong>Clean Uninstall & Shutdown:</strong> Reverts any registry modifications automatically when NVDA terminates, when the add-on is disabled, or when it is uninstalled from your system.</li>
     </ul>
 
     <h2>Requirements & Usage</h2>
     <ol>
         <li>Install the add-on by double-clicking the <code>.nvda-addon</code> file and confirming NVDA restart.</li>
-        <li>Close WhatsApp Desktop completely and reopen it. The add-on will automatically connect in the background.</li>
+        <li>Close WhatsApp Desktop completely (make sure it's not running in the system tray) and reopen it. The add-on will automatically connect in the background.</li>
         <li>Record voice notes using the native microphone button in WhatsApp Desktop as usual.</li>
     </ol>
+
+    <h2>Keyboard Shortcuts</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Shortcut</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>NVDA+Shift+W</code></td>
+                <td>Check add-on status (injection and connection status).</td>
+            </tr>
+            <tr>
+                <td><code>NVDA+Control+Shift+W</code></td>
+                <td>Rewrite WebView2 registry configurations for WhatsApp Desktop.</td>
+            </tr>
+            <tr>
+                <td><code>NVDA+Alt+Shift+W</code></td>
+                <td>Disable and clean all registry configurations applied to WhatsApp Desktop.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Security Advisory</h2>
+    <p>This add-on enables a local debugging port on <code>127.0.0.1:59222</code> to communicate with WhatsApp Desktop via the Chromium protocol (WebView2) and inject the high-fidelity audio script.</p>
+    <ul>
+        <li>No data is collected or sent to external servers in this version. All audio processing and settings manipulation remain local on your machine.</li>
+        <li>It is recommended to use this add-on only on trusted or personal computers. It is not recommended for public or shared environments.</li>
+        <li>Any registry changes are strictly temporary and will be cleared automatically whenever NVDA is closed, restarted, disabled, or uninstalled.</li>
+    </ul>
 </body>
 </html>

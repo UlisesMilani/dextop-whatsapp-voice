@@ -526,6 +526,7 @@ class SecurityWarningDialog(wx.Dialog):
         
         ok_btn = wx.Button(self, wx.ID_OK, label=_("OK"))
         ok_btn.SetDefault()
+        ok_btn.SetFocus()
         btn_sizer.Add(ok_btn, 0, wx.ALL, 5)
         
         info_btn = wx.Button(self, label=_("Read Documentation"))
@@ -593,6 +594,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 )
                 parent = gui.mainFrame
                 dlg = SecurityWarningDialog(parent, _("Dextop WhatsApp Voice - Security Warning"), msg, config_file)
+                dlg.Raise()
                 dlg.ShowModal()
                 dlg.Destroy()
             wx.CallAfter(show_warn)
